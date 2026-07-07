@@ -15,7 +15,7 @@ export default function Home() {
     <main>
       <SiteHeader cafe={cafeProfile} />
       <Hero cafe={cafeProfile} />
-      <MenuPreview items={cafeProfile.featuredMenu} />
+      <MenuPreview />
       <ReservationPanel slots={cafeProfile.availableSlots} />
       <GalleryStrip gallery={cafeProfile.gallery} />
       <AboutSection cafe={cafeProfile} />

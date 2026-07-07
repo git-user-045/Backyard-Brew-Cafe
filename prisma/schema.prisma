@@ -20,6 +20,7 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
+  cafe          Cafe?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -59,21 +60,91 @@ model VerificationToken {
 }
 
 model Reservation {
-  id          Int      @id @default(autoincrement())
-  guestName   String
+  id         Int       @id @default(autoincrement())
+  guestName  String
   phone      String
   partySize  Int
   timeSlot   String
   notes      String?
-  status     String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED
-  source     String   @default("Website")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  status     String    @default("PENDING") // PENDING, CONFIRMED, CANCELLED
+  source     String    @default("Website")
+  cafeId     String?
+  cafe       Cafe?     @relation(fields: [cafeId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }
 
 model Task {
-  id          Int      @id @default(autoincrement())
-  title       String
-  completed   Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  title     String
+  completed Boolean  @default(false)
+  cafeId    String?
+  cafe      Cafe?    @relation(fields: [cafeId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+// New models for full functionality
+model Cafe {
+  id           String         @id @default(cuid())
+  name         String
+  slug         String         @unique
+  description  String?
+  address      String?
+  phone        String?
+  email        String?
+  ownerId      String         @unique
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  categories   MenuCategory[]
+  menuItems    MenuItem[]
+  reservations Reservation[]
+  tasks        Task[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model MenuCategory {
+  id          Int        @id @default(autoincrement())
+  name        String
+  slug        String
+  description String?
+  sortOrder   Int        @default(0)
+  items       MenuItem[]
+  cafeId      String
+  cafe        Cafe       @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([slug, cafeId])
+}
+
+model MenuItem {
+  id          Int          @id @default(autoincrement())
+  name        String
+  slug        String
+  description String?
+  price       Float // Use Float for SQLite compatibility
+  image       String?
+  isAvailable Boolean      @default(true)
+  sortOrder   Int          @default(0)
+  categoryId  Int
+  category    MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  cafeId      String
+  cafe        Cafe         @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([slug, cafeId])
+}
+
+model Customer {
+  id           String        @id @default(cuid())
+  name         String?
+  email        String?       @unique
+  phone        String?
+  image        String?
+  reservations Reservation[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }

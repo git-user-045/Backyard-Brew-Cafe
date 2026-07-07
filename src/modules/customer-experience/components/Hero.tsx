@@ -1,4 +1,5 @@
 import { ArrowRight, MapPin } from "lucide-react";
+import Link from "next/link";
 import type { CafeProfile } from "../data/cafeProfile";
 
 type HeroProps = {
@@ -14,13 +15,13 @@ export function Hero({ cafe }: HeroProps) {
           <h1>{cafe.name}</h1>
           <p>{cafe.description}</p>
           <div className="hero-actions">
-            <a className="primary-button" href="#reserve">
+            <Link className="primary-button" href="/#reserve">
               Reserve a Table
               <ArrowRight size={18} />
-            </a>
-            <a className="secondary-button" href="#menu">
+            </Link>
+            <Link className="secondary-button" href="/menu">
               View Menu
-            </a>
+            </Link>
           </div>
         </div>
         <aside className="hero-status" aria-label="Cafe live information">

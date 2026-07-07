@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 
-// Get all tasks
+// Get all menu categories (for a cafe)
 export async function GET() {
   try {
     const session = await auth();
@@ -13,21 +13,22 @@ export async function GET() {
       );
     }
 
-    const tasks = await prisma.task.findMany({
+    const categories = await prisma.menuCategory.findMany({
       where: { cafeId: session.user.cafe.id },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { sortOrder: 'asc' },
+      include: { items: { orderBy: { sortOrder: 'asc' } } },
     });
-    return NextResponse.json(tasks);
+    return NextResponse.json(categories);
   } catch (error) {
-    console.error('Error fetching tasks:', error);
+    console.error('Error fetching categories:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch tasks' },
+      { error: 'Failed to fetch categories' },
       { status: 500 }
     );
   }
 }
 
-// Create new task
+// Create a new menu category
 export async function POST(request: Request) {
   try {
     const session = await auth();
@@ -39,17 +40,20 @@ export async function POST(request: Request) {
     }
 
     const data = await request.json();
-    const task = await prisma.task.create({
+    const category = await prisma.menuCategory.create({
       data: {
-        title: data.title,
+        name: data.name,
+        slug: data.slug,
+        description: data.description || null,
+        sortOrder: data.sortOrder || 0,
         cafeId: session.user.cafe.id,
       },
     });
-    return NextResponse.json(task, { status: 201 });
+    return NextResponse.json(category, { status: 201 });
   } catch (error) {
-    console.error('Error creating task:', error);
+    console.error('Error creating category:', error);
     return NextResponse.json(
-      { error: 'Failed to create task' },
+      { error: 'Failed to create category' },
       { status: 500 }
     );
   }

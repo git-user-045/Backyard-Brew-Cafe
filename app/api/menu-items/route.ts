@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 
-// Get all tasks
+// Get all menu items
 export async function GET() {
   try {
     const session = await auth();
@@ -13,21 +13,21 @@ export async function GET() {
       );
     }
 
-    const tasks = await prisma.task.findMany({
+    const items = await prisma.menuItem.findMany({
       where: { cafeId: session.user.cafe.id },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { sortOrder: 'asc' },
     });
-    return NextResponse.json(tasks);
+    return NextResponse.json(items);
   } catch (error) {
-    console.error('Error fetching tasks:', error);
+    console.error('Error fetching items:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch tasks' },
+      { error: 'Failed to fetch items' },
       { status: 500 }
     );
   }
 }
 
-// Create new task
+// Create a menu item
 export async function POST(request: Request) {
   try {
     const session = await auth();
@@ -39,17 +39,24 @@ export async function POST(request: Request) {
     }
 
     const data = await request.json();
-    const task = await prisma.task.create({
+    const item = await prisma.menuItem.create({
       data: {
-        title: data.title,
+        name: data.name,
+        slug: data.slug,
+        description: data.description || null,
+        price: data.price,
+        image: data.image || null,
+        isAvailable: data.isAvailable !== undefined ? data.isAvailable : true,
+        sortOrder: data.sortOrder || 0,
+        categoryId: data.categoryId,
         cafeId: session.user.cafe.id,
       },
     });
-    return NextResponse.json(task, { status: 201 });
+    return NextResponse.json(item, { status: 201 });
   } catch (error) {
-    console.error('Error creating task:', error);
+    console.error('Error creating item:', error);
     return NextResponse.json(
-      { error: 'Failed to create task' },
+      { error: 'Failed to create item' },
       { status: 500 }
     );
   }
