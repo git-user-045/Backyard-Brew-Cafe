@@ -23,6 +23,9 @@ export function SiteHeader({ cafe }: SiteHeaderProps) {
         <a className="icon-button" href={cafe.whatsapp} aria-label="Open WhatsApp chat">
           <MessageCircle size={19} />
         </a>
+        <Link className="secondary-button" href="/login">
+          Customer Login
+        </Link>
         <Link className="secondary-button" href="/#reserve">
           <CalendarDays size={18} />
           Book

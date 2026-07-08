@@ -3,40 +3,28 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
-// Extend the session type to include cafe
+// Extend the session type to include cafe and customer
 declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string;
-      email?: string | null;
-      name?: string | null;
-      role?: string | null;
-      cafe?: {
-        id: string;
-        name: string;
-        slug: string;
-        description?: string | null;
-        address?: string | null;
-        phone?: string | null;
-        email?: string | null;
-      } | null;
-    };
-  }
-
   interface User {
     id: string;
     email?: string | null;
     name?: string | null;
-    role?: string | null;
-    cafe?: any;
-  }
-}
-
-declare module "next-auth/jwt" {
-  interface JWT {
-    id?: string;
-    role?: string;
-    cafe?: any;
+    role: string;
+    cafe?: {
+      id: string;
+      name: string;
+      slug: string;
+      description?: string | null;
+      address?: string | null;
+      phone?: string | null;
+      email?: string | null;
+    } | null;
+    customer?: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+    } | null;
   }
 }
 
@@ -54,7 +42,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const user = await prisma.user.findUnique({
           where: { email: String(credentials.email) },
-          include: { cafe: true }, // Include the cafe
+          include: { cafe: true, customer: true },
         });
 
         if (!user || !user.password) {
@@ -76,6 +64,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           role: user.role,
           cafe: user.cafe,
+          customer: user.customer,
         };
       },
     }),
@@ -87,6 +76,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role;
         token.id = user.id;
         token.cafe = user.cafe;
+        token.customer = user.customer;
       }
       return token;
     },
@@ -95,6 +85,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.role = token.role as string;
         session.user.id = token.id as string;
         session.user.cafe = token.cafe as any;
+        session.user.customer = token.customer as any;
       }
       return session;
     },

@@ -30,6 +30,8 @@ export async function GET() {
 // Create new reservation
 export async function POST(request: Request) {
   try {
+    const session = await auth();
+    
     // Get the first cafe for now (later we could use cafe slug)
     const firstCafe = await prisma.cafe.findFirst();
     if (!firstCafe) {
@@ -40,6 +42,12 @@ export async function POST(request: Request) {
     }
 
     const data = await request.json();
+    
+    // If user is logged in as customer, link reservation to their customer account
+    const customerId = session?.user?.role === 'CUSTOMER' && session?.user?.customer?.id 
+      ? session.user.customer.id 
+      : null;
+
     const reservation = await prisma.reservation.create({
       data: {
         guestName: data.guestName,
@@ -48,6 +56,7 @@ export async function POST(request: Request) {
         timeSlot: data.timeSlot,
         notes: data.notes || null,
         cafeId: firstCafe.id,
+        customerId: customerId,
       },
     });
     return NextResponse.json(reservation, { status: 201 });

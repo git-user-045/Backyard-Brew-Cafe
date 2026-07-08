@@ -16,11 +16,12 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   password      String? // For credentials provider
-  role          String    @default("OWNER") // OWNER or ADMIN
+  role          String    @default("OWNER") // OWNER, ADMIN, or CUSTOMER
   image         String?
   accounts      Account[]
   sessions      Session[]
   cafe          Cafe?
+  customer      Customer?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -132,6 +133,7 @@ model MenuItem {
   category    MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   cafeId      String
   cafe        Cafe         @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+  favorites   Favorite[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -140,11 +142,25 @@ model MenuItem {
 
 model Customer {
   id           String        @id @default(cuid())
+  userId       String?       @unique
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String?
   email        String?       @unique
   phone        String?
   image        String?
   reservations Reservation[]
+  favorites    Favorite[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+}
+
+model Favorite {
+  id         Int      @id @default(autoincrement())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  menuItemId Int
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, menuItemId])
 }

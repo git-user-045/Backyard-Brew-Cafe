@@ -1,5 +1,6 @@
 import { CalendarCheck, UsersRound, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 
 type ReservationPanelProps = {
   slots: string[];
@@ -22,6 +23,18 @@ export function ReservationPanel({ slots }: ReservationPanelProps) {
   });
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      setFormData((prev) => ({
+        ...prev,
+        name: prev.name || session.user?.name || '',
+        phone: prev.phone || session.user?.customer?.phone || '',
+      }));
+    }
+  }, [session, status]);
 
   const handleSlotSelect = (slot: string) => {
     setSelectedSlot(slot);
@@ -35,11 +48,11 @@ export function ReservationPanel({ slots }: ReservationPanelProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSlot) return;
-    
+
     setIsLoading(true);
+    setSubmitMessage(null);
     try {
-      // Send POST request to API
-      await fetch('/api/reservations', {
+      const res = await fetch('/api/reservations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -50,17 +63,25 @@ export function ReservationPanel({ slots }: ReservationPanelProps) {
           notes: formData.notes || null,
         }),
       });
-      
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSubmitMessage(data.error || 'Failed to create reservation. Please try again later.');
+        return;
+      }
+
       setIsSubmitted(true);
-      // Reset form after 3 seconds
+      setSubmitMessage('Reservation request sent successfully.');
       setTimeout(() => {
         setIsSubmitted(false);
-        setFormData({ name: "", phone: "", partySize: "2", notes: "" });
+        setSubmitMessage(null);
+        setFormData({ name: session?.user?.name || "", phone: session?.user?.customer?.phone || "", partySize: "2", notes: "" });
         setSelectedSlot(null);
       }, 3000);
     } catch (error) {
       console.error("Error creating reservation:", error);
-      alert("Failed to create reservation. Please try again later.");
+      setSubmitMessage('Failed to create reservation. Please try again later.');
     } finally {
       setIsLoading(false);
     }
@@ -109,6 +130,11 @@ export function ReservationPanel({ slots }: ReservationPanelProps) {
               <form className="form-grid" onSubmit={handleSubmit}>
                 <UsersRound size={28} />
                 <h3>Your Details</h3>
+                {submitMessage && (
+                  <p style={{ margin: 0, color: submitMessage.includes('successfully') ? 'var(--mint)' : '#ffd7c0', fontWeight: 600 }}>
+                    {submitMessage}
+                  </p>
+                )}
                 <input
                   type="text"
                   name="name"

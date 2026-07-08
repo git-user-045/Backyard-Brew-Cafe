@@ -83,6 +83,57 @@ export function OwnerDashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [summary, setSummary] = useState({
+    confirmed: 0,
+    pending: 0,
+    cancelled: 0,
+    totalTasks: 0,
+  });
+
+  const recalculateSummary = (nextReservations: Reservation[], nextTasks: Task[]) => {
+    setSummary({
+      confirmed: nextReservations.filter((res) => res.status === 'CONFIRMED').length,
+      pending: nextReservations.filter((res) => res.status === 'PENDING').length,
+      cancelled: nextReservations.filter((res) => res.status === 'CANCELLED').length,
+      totalTasks: nextTasks.length,
+    });
+  };
+
+  const reservationStats = {
+    total: reservations.length,
+    confirmed: reservations.filter((reservation) => reservation.status === 'CONFIRMED').length,
+    pending: reservations.filter((reservation) => reservation.status === 'PENDING').length,
+    cancelled: reservations.filter((reservation) => reservation.status === 'CANCELLED').length,
+    averageParty: reservations.length
+      ? Math.round(reservations.reduce((sum, reservation) => sum + reservation.partySize, 0) / reservations.length)
+      : 0,
+  };
+
+  const customerList = Array.from(
+    reservations.reduce((map, reservation) => {
+      const key = reservation.phone || reservation.guestName;
+      const existing = map.get(key) || {
+        name: reservation.guestName,
+        phone: reservation.phone,
+        visits: 0,
+        lastVisit: reservation.createdAt,
+      };
+      existing.visits += 1;
+      existing.lastVisit = reservation.createdAt;
+      map.set(key, existing);
+      return map;
+    }, new Map<string, { name: string; phone: string; visits: number; lastVisit: string }>())
+      .values()
+  );
+
+  const sourceBreakdown = reservations.reduce<Record<string, number>>((acc, reservation) => {
+    const source = reservation.source || 'Website';
+    acc[source] = (acc[source] || 0) + 1;
+    return acc;
+  }, {});
+
+  const cafeName = session?.user?.cafe?.name || 'Backyard Brew Cafe';
 
   // Fetch initial data
   useEffect(() => {
@@ -99,6 +150,7 @@ export function OwnerDashboard() {
         setReservations(reservationsData);
         setTasks(tasksData);
         setCategories(categoriesData);
+        recalculateSummary(reservationsData, tasksData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -115,9 +167,11 @@ export function OwnerDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      setReservations(prev => prev.map(res =>
-        res.id === id ? { ...res, status: newStatus } : res
-      ));
+      setReservations(prev => {
+        const updated = prev.map(res => res.id === id ? { ...res, status: newStatus } : res);
+        recalculateSummary(updated, tasks);
+        return updated;
+      });
     } catch (error) {
       console.error('Error updating reservation:', error);
     }
@@ -128,9 +182,35 @@ export function OwnerDashboard() {
       await fetch(`/api/tasks/${id}`, {
         method: 'DELETE',
       });
-      setTasks(prev => prev.filter(task => task.id !== id));
+      setTasks(prev => {
+        const updated = prev.filter(task => task.id !== id);
+        recalculateSummary(reservations, updated);
+        return updated;
+      });
     } catch (error) {
       console.error('Error deleting task:', error);
+    }
+  };
+
+  const addTask = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!taskTitle.trim()) return;
+
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: taskTitle.trim() }),
+      });
+      const newTask = await res.json();
+      setTasks(prev => {
+        const updated = [newTask, ...prev];
+        recalculateSummary(reservations, updated);
+        return updated;
+      });
+      setTaskTitle('');
+    } catch (error) {
+      console.error('Error creating task:', error);
     }
   };
 
@@ -150,7 +230,7 @@ export function OwnerDashboard() {
         }),
       });
       const newCategory = await res.json();
-      setCategories([...categories, newCategory]);
+      setCategories(prev => [...prev, newCategory]);
     } catch (error) {
       console.error('Error creating category:', error);
     }
@@ -160,7 +240,7 @@ export function OwnerDashboard() {
     if (!confirm('Are you sure you want to delete this category?')) return;
     try {
       await fetch(`/api/menu-categories/${id}`, { method: 'DELETE' });
-      setCategories(categories.filter(cat => cat.id !== id));
+      setCategories(prev => prev.filter(cat => cat.id !== id));
     } catch (error) {
       console.error('Error deleting category:', error);
     }
@@ -185,7 +265,7 @@ export function OwnerDashboard() {
         }),
       });
       const newItem = await res.json();
-      setCategories(categories.map(cat =>
+      setCategories(prev => prev.map(cat =>
         cat.id === categoryId ? { ...cat, items: [...cat.items, newItem] } : cat
       ));
     } catch (error) {
@@ -197,7 +277,7 @@ export function OwnerDashboard() {
     if (!confirm('Are you sure you want to delete this item?')) return;
     try {
       await fetch(`/api/menu-items/${itemId}`, { method: 'DELETE' });
-      setCategories(categories.map(cat =>
+      setCategories(prev => prev.map(cat =>
         cat.id === categoryId
           ? { ...cat, items: cat.items.filter(item => item.id !== itemId) }
           : cat
@@ -215,13 +295,31 @@ export function OwnerDashboard() {
         body: JSON.stringify({ isAvailable: !item.isAvailable }),
       });
       const updatedItem = await res.json();
-      setCategories(categories.map(cat =>
+      setCategories(prev => prev.map(cat =>
         cat.id === item.categoryId
           ? { ...cat, items: cat.items.map(i => i.id === item.id ? updatedItem : i) }
           : cat
       ));
     } catch (error) {
       console.error('Error updating item:', error);
+    }
+  };
+
+  const toggleTaskCompletion = async (task: Task) => {
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed: !task.completed }),
+      });
+      const updatedTask = await res.json();
+      setTasks(prev => {
+        const updated = prev.map(item => item.id === task.id ? updatedTask : item);
+        recalculateSummary(reservations, updated);
+        return updated;
+      });
+    } catch (error) {
+      console.error('Error updating task:', error);
     }
   };
 
@@ -281,7 +379,7 @@ export function OwnerDashboard() {
         <header className="ops-topbar">
           <div>
             <p className="ops-kicker">Owner workspace</p>
-            <h1>Backyard Brew Cafe</h1>
+            <h1>{cafeName}</h1>
             {session?.user && (
               <p style={{ color: '#666', fontSize: '0.875rem' }}>
                 Welcome, {session.user.name || session.user.email}
@@ -297,10 +395,10 @@ export function OwnerDashboard() {
         {activeTab === 'Dashboard' && (
           <>
             <section className="ops-metrics" aria-label="Today metrics">
-              <MetricCard label="Revenue" value="Rs. 42,860" icon={<BarChart3 size={19} />} />
               <MetricCard label="Reservations" value={String(reservations.length)} icon={<CalendarClock size={19} />} />
-              <MetricCard label="Walk-ins" value="64" icon={<UsersRound size={19} />} />
-              <MetricCard label="Average order" value="Rs. 410" icon={<Coffee size={19} />} />
+              <MetricCard label="Confirmed" value={String(summary.confirmed)} icon={<CheckCircle2 size={19} />} />
+              <MetricCard label="Pending" value={String(summary.pending)} icon={<Clock size={19} />} />
+              <MetricCard label="Tasks" value={String(summary.totalTasks)} icon={<Star size={19} />} />
             </section>
 
             <section className="ops-grid">
@@ -373,10 +471,27 @@ export function OwnerDashboard() {
 
               <article className="ops-panel">
                 <PanelHeader icon={<Star size={18} />} title="Action Queue" />
+                <form onSubmit={addTask} style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                  <input
+                    value={taskTitle}
+                    onChange={(e) => setTaskTitle(e.target.value)}
+                    placeholder="Add a task"
+                    style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid #ddd' }}
+                  />
+                  <button type="submit" style={{ background: '#233f15', color: 'white', border: 'none', borderRadius: '6px', padding: '0 12px', cursor: 'pointer' }}>Add</button>
+                </form>
                 <ul className="ops-task-list">
                   {tasks.filter(task => !task.completed).map((task) => (
                     <li key={task.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingRight: "1rem" }}>
-                      {task.title}
+                      <button
+                        type="button"
+                        onClick={() => toggleTaskCompletion(task)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#3f6738", padding: 0 }}
+                        title="Mark as complete"
+                      >
+                        <CheckCircle2 size={16} />
+                      </button>
+                      <span style={{ flex: 1, marginLeft: "0.5rem" }}>{task.title}</span>
                       <button
                         type="button"
                         onClick={() => removeTask(task.id)}
@@ -393,8 +508,172 @@ export function OwnerDashboard() {
                   ))}
                 </ul>
               </article>
+
+              <article className="ops-panel">
+                <PanelHeader icon={<BarChart3 size={18} />} title="Today at a glance" />
+                <div className="ops-list">
+                  <div className="ops-list-row">
+                    <div>
+                      <strong>Confirmed bookings</strong>
+                      <span>{summary.confirmed} reservations locked in</span>
+                    </div>
+                    <b>{summary.pending} pending</b>
+                  </div>
+                  <div className="ops-list-row">
+                    <div>
+                      <strong>Open tasks</strong>
+                      <span>{summary.totalTasks} active follow-ups</span>
+                    </div>
+                    <b>{summary.cancelled} cancelled</b>
+                  </div>
+                </div>
+              </article>
             </section>
           </>
+        )}
+
+        {activeTab === 'Reservations' && (
+          <section className="ops-grid">
+            <article className="ops-panel ops-panel-large">
+              <PanelHeader icon={<CalendarClock size={18} />} title="Reservation Inbox" />
+              <div className="ops-table">
+                <div className="ops-table-row ops-table-head">
+                  <span>Guest</span>
+                  <span>Time</span>
+                  <span>Party</span>
+                  <span>Status</span>
+                  <span>Source</span>
+                  <span>Actions</span>
+                </div>
+                {reservations.map((reservation) => (
+                  <div className="ops-table-row" key={reservation.id}>
+                    <strong>{reservation.guestName}</strong>
+                    <span>{reservation.timeSlot}</span>
+                    <span>{reservation.partySize}</span>
+                    <span className={`ops-status ${reservation.status.toLowerCase()}`}>{reservation.status}</span>
+                    <span>{reservation.source}</span>
+                    <span style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button type="button" onClick={() => updateReservationStatus(reservation.id, 'CONFIRMED')}><CheckCircle2 size={16} /></button>
+                      <button type="button" onClick={() => updateReservationStatus(reservation.id, 'PENDING')}><Clock size={16} /></button>
+                      <button type="button" onClick={() => updateReservationStatus(reservation.id, 'CANCELLED')}><XCircle size={16} /></button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </section>
+        )}
+
+        {activeTab === 'Customers' && (
+          <section className="ops-grid">
+            <article className="ops-panel ops-panel-large">
+              <PanelHeader icon={<UsersRound size={18} />} title="Customer Directory" />
+              <div className="ops-list">
+                {customerList.map((customer) => (
+                  <div className="ops-list-row" key={customer.phone || customer.name}>
+                    <div>
+                      <strong>{customer.name}</strong>
+                      <span>{customer.phone || 'No phone on file'}</span>
+                    </div>
+                    <b>{customer.visits} visits</b>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </section>
+        )}
+
+        {activeTab === 'Analytics' && (
+          <section className="ops-grid">
+            <article className="ops-panel">
+              <PanelHeader icon={<BarChart3 size={18} />} title="Booking overview" />
+              <div className="ops-list">
+                <div className="ops-list-row">
+                  <div>
+                    <strong>Total reservations</strong>
+                    <span>{reservationStats.total} bookings logged</span>
+                  </div>
+                  <b>{reservationStats.confirmed} confirmed</b>
+                </div>
+                <div className="ops-list-row">
+                  <div>
+                    <strong>Average party size</strong>
+                    <span>Typical guest volume</span>
+                  </div>
+                  <b>{reservationStats.averageParty} guests</b>
+                </div>
+              </div>
+            </article>
+            <article className="ops-panel">
+              <PanelHeader icon={<BarChart3 size={18} />} title="Traffic sources" />
+              <div className="ops-list">
+                {Object.entries(sourceBreakdown).map(([source, count]) => (
+                  <div className="ops-list-row" key={source}>
+                    <div>
+                      <strong>{source}</strong>
+                      <span>Reservations received</span>
+                    </div>
+                    <b>{count}</b>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </section>
+        )}
+
+        {activeTab === 'Marketing' && (
+          <section className="ops-grid">
+            <article className="ops-panel ops-panel-large">
+              <PanelHeader icon={<Megaphone size={18} />} title="Marketing pulse" />
+              <div className="ops-list">
+                <div className="ops-list-row">
+                  <div>
+                    <strong>Top channel</strong>
+                    <span>Most bookings came from the web</span>
+                  </div>
+                  <b>{Object.entries(sourceBreakdown).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Website'}</b>
+                </div>
+                <div className="ops-list-row">
+                  <div>
+                    <strong>Repeat customers</strong>
+                    <span>Returning guests in your booking history</span>
+                  </div>
+                  <b>{customerList.filter((customer) => customer.visits > 1).length}</b>
+                </div>
+              </div>
+            </article>
+          </section>
+        )}
+
+        {activeTab === 'Settings' && (
+          <section className="ops-grid">
+            <article className="ops-panel ops-panel-large">
+              <PanelHeader icon={<Settings size={18} />} title="Cafe settings" />
+              <div className="ops-list">
+                <div className="ops-list-row">
+                  <div>
+                    <strong>Cafe name</strong>
+                    <span>Displayed to customers and staff</span>
+                  </div>
+                  <b>{cafeName}</b>
+                </div>
+                <div className="ops-list-row">
+                  <div>
+                    <strong>Plan</strong>
+                    <span>Current subscription tier</span>
+                  </div>
+                  <b>Advanced</b>
+                </div>
+                <div className="ops-list-row">
+                  <div>
+                    <strong>Reservations</strong>
+                    <span>Live booking workflow status</span>
+                  </div>
+                  <b>{reservationStats.confirmed} confirmed</b>
+                </div>
+              </div>
+            </article>
+          </section>
         )}
 
         {activeTab === 'Menu' && (

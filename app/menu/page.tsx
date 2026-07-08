@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import { ArrowLeft, Heart, LoaderCircle } from 'lucide-react';
 
 type MenuItem = {
   id: number;
@@ -42,6 +44,11 @@ const placeholderImages = [
 export default function MenuPage() {
   const [menu, setMenu] = useState<MenuCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
+  const [loadingFavoriteId, setLoadingFavoriteId] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const { data: session, status } = useSession();
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchMenu() {
@@ -57,6 +64,59 @@ export default function MenuPage() {
     }
     fetchMenu();
   }, []);
+
+  useEffect(() => {
+    async function fetchFavorites() {
+      if (status !== 'authenticated' || session?.user?.role !== 'CUSTOMER') {
+        setFavoriteIds([]);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/customer/favorites');
+        if (!res.ok) return;
+        const data = await res.json();
+        setFavoriteIds(data.map((favorite: { menuItemId: number }) => favorite.menuItemId));
+      } catch (error) {
+        console.error('Error fetching favorites:', error);
+      }
+    }
+
+    fetchFavorites();
+  }, [session, status]);
+
+  const handleFavorite = async (itemId: number) => {
+    if (status !== 'authenticated' || session?.user?.role !== 'CUSTOMER') {
+      router.push('/login?callbackUrl=/menu');
+      return;
+    }
+
+    setLoadingFavoriteId(itemId);
+    setFeedback(null);
+
+    try {
+      const res = await fetch('/api/customer/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ menuItemId: itemId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setFeedback(data.error || 'Could not add favorite');
+        return;
+      }
+
+      setFavoriteIds((prev) => (prev.includes(itemId) ? prev : [...prev, itemId]));
+      setFeedback('Added to your favorites');
+    } catch (error) {
+      console.error('Error adding favorite:', error);
+      setFeedback('Something went wrong');
+    } finally {
+      setLoadingFavoriteId(null);
+      window.setTimeout(() => setFeedback(null), 2200);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -77,6 +137,9 @@ export default function MenuPage() {
       <header style={{ marginBottom: '48px' }}>
         <h1 style={{ fontSize: '3rem', marginBottom: '8px', fontWeight: 700 }}>Our Menu</h1>
         <p style={{ fontSize: '1.125rem', color: 'var(--text-secondary)' }}>Freshly brewed, carefully crafted, and made with love.</p>
+        {feedback && (
+          <p style={{ marginTop: '12px', color: '#3f6738', fontWeight: 600 }}>{feedback}</p>
+        )}
       </header>
       {menu.map((category) => (
         <section key={category.id} style={{ marginBottom: '56px' }}>
@@ -117,8 +180,25 @@ export default function MenuPage() {
                   }} 
                 />
                 <div style={{ padding: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', gap: '8px' }}>
                     <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>{item.name}</h3>
+                    <button
+                      type="button"
+                      onClick={() => handleFavorite(item.id)}
+                      disabled={loadingFavoriteId === item.id}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: loadingFavoriteId === item.id ? 'wait' : 'pointer',
+                        color: favoriteIds.includes(item.id) ? '#9a3327' : '#6e625a',
+                        padding: 0,
+                      }}
+                      aria-label={`Favorite ${item.name}`}
+                    >
+                      {loadingFavoriteId === item.id ? <LoaderCircle size={18} className="spin" /> : <Heart size={18} fill={favoriteIds.includes(item.id) ? '#9a3327' : 'none'} />}
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--copper)' }}>Rs. {item.price}</span>
                   </div>
                   {item.description && (
